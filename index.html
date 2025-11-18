@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Evaluación de Excel - Colegio</title>
+  <style>
+    :root{--azul:#0b5f91;--gris:#f4f6f8;--texto:#222}
+    body{font-family:Inter, Arial, sans-serif;background:linear-gradient(180deg,#ffffff 0%, #f7fbff 100%);color:var(--texto);margin:0}
+    .container{max-width:980px;margin:32px auto;padding:28px;background:white;border-radius:10px;box-shadow:0 8px 30px rgba(2,15,40,0.06)}
+    header{display:flex;align-items:center;gap:20px}
+    .logo{width:96px;height:96px;border-radius:8px;background:#eee;display:flex;align-items:center;justify-content:center;color:#777;font-weight:700}
+    .meta{flex:1}
+    h1{margin:0;font-size:20px;color:var(--azul)}
+    .meta .sub{font-size:14px;color:#555;margin-top:6px}
+    .form-row{display:flex;gap:12px;margin-top:16px}
+    .form-row input{flex:1;padding:8px;border-radius:6px;border:1px solid #ddd}
+    .info-bar{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding:12px;border-radius:8px;background:var(--gris)}
+    .timer{font-weight:700;color:#0a3b5a}
+    .question-box{margin-top:20px}
+    .question{padding:18px;border-radius:8px;border:1px solid #e6eef6;background:linear-gradient(180deg,#fff,#fbfdff)}
+    .controls{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+    button{background:var(--azul);color:white;padding:10px 14px;border-radius:8px;border:0;cursor:pointer}
+    button[disabled]{opacity:0.5;cursor:not-allowed}
+    .small{font-size:13px;color:#444}
+    .result{margin-top:18px;padding:14px;border-radius:8px;background:#f0fff6;border:1px solid #d9f0dc}
+    .correct{color:green;font-weight:700}
+    .wrong{color:#b52b2b;font-weight:700}
+    .hidden{display:none}
+    footer{margin-top:20px;font-size:13px;color:#666;text-align:center}
+    /* inputs */
+    .options{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+    textarea{width:100%;min-height:80px;padding:8px;border-radius:6px;border:1px solid #ddd}
+    /* responsive */
+    @media(max-width:640px){.form-row{flex-direction:column}.logo{width:72px;height:72px}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">LOGO</div>
+      <div class="meta">
+        <h1>Evaluación: Funciones básicas de Excel</h1>
+        <div class="sub">Profesor: <span id="profesor-name">Nombre del profesor</span> · Curso: <span id="curso-name">1°</span></div>
+        <div class="sub" style="margin-top:6px">Descripción: Evaluación práctica sobre SUM, RESTA, MULTIPLICACIÓN, DIVISIÓN, PROMEDIO, REDONDEAR, CONTAR, CONTARA, MAX, MIN</div>
+      </div>
+    </header>
+
+    <div class="form-row">
+      <input id="apellidos" placeholder="Apellidos" />
+      <input id="nombres" placeholder="Nombres" />
+      <input id="curso" placeholder="Curso" />
+    </div>
+
+    <div class="info-bar">
+      <div class="small">Tiempo total: <strong>30 minutos</strong></div>
+      <div class="timer" id="timer">30:00</div>
+    </div>
+
+    <div id="quiz" class="question-box">
+      <!-- preguntas se generan por JS -->
+    </div>
+
+    <div class="controls">
+      <div class="small">Pregunta <span id="current">0</span> / <span id="total">0</span></div>
+      <div style="display:flex;gap:8px">
+        <button id="btn-next">Siguiente</button>
+        <button id="btn-submit" style="background:#2a8f46">Terminar evaluación</button>
+      </div>
+    </div>
+
+    <div id="after" class="hidden">
+      <div class="result" id="result-box"></div>
+    </div>
+
+    <footer>Esta evaluación es secuencial: no es posible retroceder entre preguntas. Al terminar (manual o automáticamente) las respuestas se enviarán a Google Sheets.</footer>
+  </div>
+
+  <script>
+  /*****************************************************************
+   * CONFIGURACIÓN
+   * Cambia `GOOGLE_SCRIPT_URL` por la URL del Web App de Google Apps Script
+   * (Ver instrucciones en el bloque al final del archivo)
+   *****************************************************************/
+  const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwSl2xLNAmev1MU4Q2_ZCYurryn1FIzsG0ZifYb248hwy-xq13FqV0SmPrHD9q3jBfk/exec';
+  const TOTAL_TIME_SECONDS = 30 * 60; // 30 minutos
+
+  // Preguntas: 10 preguntas — 10 pts cada una = 100 pts
+ const preguntas = [
+  {id:1,tipo:'respuesta_corta',punt:5,pregunta:'1) Escribe la fórmula para sumar los valores en A1 a A5.',respuesta:'=SUMA(A1;A5)'},
+  {id:2,tipo:'respuesta_corta',punt:5,pregunta:'2) Escribe la fórmula para restar B1 de A1.',respuesta:'=A1-B1'},
+  {id:3,tipo:'respuesta_corta',punt:6,pregunta:'3) Escribe la fórmula para multiplicar A1 por B1.',respuesta:'=A1*B1'},
+  {id:4,tipo:'respuesta_corta',punt:6,pregunta:'4) Escribe la fórmula para dividir A1 entre B1.',respuesta:'=A1/B1'},
+  {id:5,tipo:'respuesta_corta',punt:7,pregunta:'5) Escribe la fórmula para sacar el promedio de A1 a A10.',respuesta:'=PROMEDIO(A1;A10)'},
+  {id:6,tipo:'respuesta_corta',punt:7,pregunta:'6) Escribe la fórmula para redondear A1 a 2 decimales.',respuesta:'=REDONDEAR(A1;2)'},
+  {id:7,tipo:'respuesta_corta',punt:7,pregunta:'7) Escribe la fórmula para obtener el valor máximo del rango B1:B20.',respuesta:'=MAX(B1;B20)'},
+  {id:8,tipo:'respuesta_corta',punt:7,pregunta:'8) Escribe la fórmula para obtener el valor mínimo del rango B1:B20.',respuesta:'=MIN(B1;B20)'},
+  {id:9,tipo:'respuesta_corta',punt:8,pregunta:'9) Escribe la fórmula para contar cuántas celdas con números hay en C1:C50.',respuesta:'=CONTAR(C1;C50)'},
+  {id:10,tipo:'respuesta_corta',punt:8,pregunta:'10) Escribe la fórmula para contar todas las celdas no vacías en C1:C50.',respuesta:'=CONTARA(C1;C50)'},
+
+  {id:11,tipo:'respuesta_complementaria',punt:8,pregunta:'11) Si A1=20 y B1=5, escribe la fórmula para restar B1 de A1 y multiplicar el resultado por 3.',respuesta:'=(A1-B1)*3'},
+  {id:12,tipo:'respuesta_complementaria',punt:8,pregunta:'12) Si A1=50 y B1=10, escribe la fórmula para dividir A1 entre B1 y sumar 2.',respuesta:'=(A1/B1)+2'},
+  {id:13,tipo:'respuesta_complementaria',punt:9,pregunta:'13) Si A1=5,B1=3,C1=2, escribe la fórmula para sumar A1 y B1, y luego multiplicar el resultado por C1.',respuesta:'=(A1+B1)*C1'},
+  {id:14,tipo:'respuesta_complementaria',punt:9,pregunta:'14) Escribe la fórmula para promediar A1 a A5 y restar 1 al resultado.',respuesta:'=PROMEDIO(A1;A5)-1'},
+  {id:15,tipo:'respuesta_complementaria',punt:10,pregunta:'15) Escribe la fórmula para sumar A1 a A10 y dividir el resultado entre 2.',respuesta:'=SUMA(A1;A10)/2'},
+
+  {id:16,tipo:'multiple_unica',punt:6,pregunta:'16) ¿Qué función sirve para obtener el promedio de un rango?',opciones:['SUMA','PROMEDIO','CONTAR','REDONDEAR'],respuesta:'PROMEDIO'},
+  {id:17,tipo:'multiple_unica',punt:6,pregunta:'17) ¿Qué función sirve para sumar un rango?',opciones:['MAX','MIN','SUMA','REDONDEAR'],respuesta:'SUMA'},
+  {id:18,tipo:'multiple_unica',punt:7,pregunta:'18) ¿Qué función devuelve el valor máximo de un rango?',opciones:['MIN','PROMEDIO','MAX','CONTAR'],respuesta:'MAX'},
+  {id:19,tipo:'multiple_unica',punt:7,pregunta:'19) ¿Qué función cuenta solo números?',opciones:['CONTARA','SUMA','CONTAR','PROMEDIO'],respuesta:'CONTAR'},
+  {id:20,tipo:'multiple_unica',punt:7,pregunta:'20) ¿Qué función redondea un número?',opciones:['REDONDEAR','SUMA','MAX','CONTAR'],respuesta:'REDONDEAR'},
+
+  {id:21,tipo:'multiple_varias',punt:8,pregunta:'21) ¿Qué funciones sirven para redondear números?',opciones:['REDONDEAR','PROMEDIO','REDONDEAR.MAS','SUMA'],respuesta:['REDONDEAR','REDONDEAR.MAS']},
+  {id:22,tipo:'multiple_varias',punt:8,pregunta:'22) ¿Qué funciones trabajan con valores máximos y mínimos?',opciones:['MAX','MIN','PROMEDIO','CONTAR'],respuesta:['MAX','MIN']},
+  {id:23,tipo:'multiple_varias',punt:9,pregunta:'23) ¿Qué funciones cuentan celdas?',opciones:['SUMA','CONTAR','CONTARA','PROMEDIO'],respuesta:['CONTAR','CONTARA']},
+  {id:24,tipo:'multiple_varias',punt:9,pregunta:'24) ¿Qué funciones permiten operaciones matemáticas básicas?',opciones:['SUMA','RESTA','MULTIPLICACIÓN','DIVISIÓN'],respuesta:['SUMA','RESTA','MULTIPLICACIÓN','DIVISIÓN']},
+  {id:25,tipo:'multiple_varias',punt:10,pregunta:'25) ¿Qué funciones trabajan con promedios y redondeos?',opciones:['PROMEDIO','REDONDEAR','CONTARA','SUMA'],respuesta:['PROMEDIO','REDONDEAR']}
+];
+
+
+  // estado
+  let currentIndex = 0;
+  let respuestasUsuario = Array(preguntas.length).fill(null);
+  let tiempoRestante = TOTAL_TIME_SECONDS;
+  let timerInterval = null;
+
+  // prevenir retroceso con historial
+  history.pushState(null, document.title);
+  window.addEventListener('popstate', function (e) { history.pushState(null, document.title); });
+
+  // impedir recarga accidental (advertencia)
+  window.addEventListener('beforeunload', function(e){ if(!document.getElementById('after').classList.contains('hidden')) return; e.preventDefault(); e.returnValue='¿Estás seguro de salir? Tu examen se enviará automáticamente cuando termine.'; });
+
+  // construir interfaz
+  const quizEl = document.getElementById('quiz');
+  document.getElementById('total').textContent = preguntas.length;
+  document.getElementById('current').textContent = 1;
+
+  function renderQuestion(index){
+    const q = preguntas[index];
+    document.getElementById('current').textContent = index+1;
+    quizEl.innerHTML = '';
+    const box = document.createElement('div'); box.className='question';
+    const h = document.createElement('div'); h.innerHTML = `<strong>${q.pregunta}</strong>`;
+    box.appendChild(h);
+
+    const options = document.createElement('div'); options.className='options';
+
+    if(q.tipo==='respuesta_corta' || q.tipo==='respuesta_complementaria'){
+      const ta = document.createElement('textarea'); ta.id='answer';
+      ta.placeholder='Escribe tu respuesta aquí...';
+      if(respuestasUsuario[index]) ta.value = respuestasUsuario[index];
+      options.appendChild(ta);
+    } else if(q.tipo==='multiple_unica'){
+      q.opciones.forEach((op,i)=>{
+        const id = `opt-${index}-${i}`;
+        const div=document.createElement('label'); div.style.display='flex';div.style.alignItems='center';
+        const inp=document.createElement('input'); inp.type='radio'; inp.name='single'; inp.value=op; inp.id=id;
+        if(respuestasUsuario[index]===op) inp.checked=true;
+        div.appendChild(inp); div.appendChild(document.createTextNode(' '+op)); options.appendChild(div);
+      });
+    } else if(q.tipo==='multiple_varias'){
+      q.opciones.forEach((op,i)=>{
+        const id = `chk-${index}-${i}`;
+        const div=document.createElement('label'); div.style.display='flex';div.style.alignItems='center';
+        const inp=document.createElement('input'); inp.type='checkbox'; inp.name='multi'; inp.value=op; inp.id=id;
+        if(Array.isArray(respuestasUsuario[index]) && respuestasUsuario[index].includes(op)) inp.checked=true;
+        div.appendChild(inp); div.appendChild(document.createTextNode(' '+op)); options.appendChild(div);
+      });
+    }
+
+    box.appendChild(options);
+    quizEl.appendChild(box);
+
+    // si es última pregunta cambiar texto del siguiente
+    document.getElementById('btn-next').textContent = (index===preguntas.length-1)?'Última':'Siguiente';
+  }
+
+  function saveCurrentAnswer(){
+    const q = preguntas[currentIndex];
+    if(q.tipo==='respuesta_corta' || q.tipo==='respuesta_complementaria'){
+      const val = document.getElementById('answer')?.value?.trim() || '';
+      respuestasUsuario[currentIndex] = val;
+    } else if(q.tipo==='multiple_unica'){
+      const sel = document.querySelector('input[name="single"]:checked');
+      respuestasUsuario[currentIndex] = sel ? sel.value : null;
+    } else if(q.tipo==='multiple_varias'){
+      const checks = Array.from(document.querySelectorAll('input[name="multi"]:checked')).map(i=>i.value);
+      respuestasUsuario[currentIndex] = checks.length?checks:null;
+    }
+  }
+
+  document.getElementById('btn-next').addEventListener('click', ()=>{
+    saveCurrentAnswer();
+    // validación simple: no permitir avanzar sin responder
+    if(respuestasUsuario[currentIndex] === null || respuestasUsuario[currentIndex] === ''){
+      if(!confirm('No has respondido esta pregunta. ¿Deseas continuar sin responder?')) return;
+    }
+    // avanzar
+    if(currentIndex < preguntas.length-1){
+      currentIndex++; renderQuestion(currentIndex);
+      // no volver atrás — ocultar historial no permite, y no mostramos botón prev
+    } else {
+      alert('Llegaste a la última pregunta. Puedes terminar la evaluación con "Terminar evaluación".');
+    }
+  });
+
+  document.getElementById('btn-submit').addEventListener('click', ()=>{
+    if(!confirm('¿Deseas terminar la evaluación ahora y enviar tus respuestas?')) return;
+    saveCurrentAnswer();
+    finishAndSend();
+  });
+
+  function evaluate(){
+    // compara respuestas y calcula nota
+    let total = 0;
+    const detalle = [];
+    preguntas.forEach((q,i)=>{
+      const user = respuestasUsuario[i];
+      let correcto = false; let pts = 0; let correctoText='';
+      if(q.tipo==='respuesta_corta' || q.tipo==='respuesta_complementaria'){
+        const expect = (q.respuesta||'').toString().trim().toLowerCase();
+        const given = (user||'').toString().trim().toLowerCase();
+        if(expect === given) {correcto=true; pts=q.punt}
+        correctoText = q.respuesta;
+      } else if(q.tipo==='multiple_unica'){
+        if(user && user.toString() === q.respuesta.toString()) {correcto=true; pts=q.punt}
+        correctoText = q.respuesta;
+      } else if(q.tipo==='multiple_varias'){
+        const expectArr = q.respuesta.map(x=>x.toString());
+        const givenArr = Array.isArray(user)?user.map(x=>x.toString()):[];
+        // exact match (unordered)
+        const same = expectArr.length===givenArr.length && expectArr.every(v=>givenArr.includes(v));
+        if(same){correcto=true; pts=q.punt}
+        correctoText = q.respuesta.join(', ');
+      }
+      total += pts;
+      detalle.push({id:q.id,pregunta:q.pregunta, usuario:user, correcto, puntos:pts, respuesta_correcta:correctoText});
+    });
+    return {nota:total, detalle};
+  }
+
+  function showResult(evaluacion){
+    document.getElementById('after').classList.remove('hidden');
+    const box = document.getElementById('result-box');
+    box.innerHTML = `<h3>Resultado final: ${evaluacion.nota} / 100</h3>`;
+    const list = document.createElement('div');
+    evaluacion.detalle.forEach((d,i)=>{
+      const div = document.createElement('div');
+      div.style.padding='8px'; div.style.borderBottom='1px solid #eef';
+      div.innerHTML = `<div><strong>Pregunta ${i+1}:</strong> ${d.pregunta}</div>
+                       <div>Tu respuesta: <span class='${d.correcto?"correct":"wrong"}'>${d.usuario===null||d.usuario===''?'<em>(sin respuesta)</em>':escapeHtml(d.usuario)}</span></div>
+                       <div>Respuesta correcta: <strong>${escapeHtml(d.respuesta_correcta)}</strong> — Puntos: ${d.puntos}</div>`;
+      list.appendChild(div);
+    });
+    box.appendChild(list);
+  }
+
+  function escapeHtml(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  async function finishAndSend(){
+    // evaluar
+    const evaluacion = evaluate();
+    showResult(evaluacion);
+    // preparar datos
+    const payload = {
+      fecha: new Date().toISOString(),
+      apellidos: document.getElementById('apellidos').value || '',
+      nombres: document.getElementById('nombres').value || '',
+      curso: document.getElementById('curso').value || '',
+      profesor: document.getElementById('profesor-name').textContent || '',
+      nota: evaluacion.nota,
+      detalle: JSON.stringify(evaluacion.detalle)
+    };
+
+    // enviar a Google Sheets (Apps Script)
+    try{
+      if(!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('REEMPLAZA')){
+        console.warn('No se ha configurado la URL del Apps Script. Copia manualmente el resultado.');
+        alert('Atención: NO se envió la evaluación porque falta configurar la URL del Apps Script en el código. Revisa las instrucciones al final del archivo.');
+        return;
+      }
+      const resp = await fetch(GOOGLE_SCRIPT_URL,{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+      });
+      const txt = await resp.text();
+      console.log('Respuesta servidor:',txt);
+      alert('Evaluación enviada correctamente.');
+    }catch(err){
+      console.error(err);
+      alert('Hubo un error al enviar la evaluación. Revisa la consola para más detalles.');
+    }
+
+    // detener timer
+    clearInterval(timerInterval);
+    // ocultar botones
+    document.getElementById('btn-next').disabled=true; document.getElementById('btn-submit').disabled=true;
+  }
+
+  // Timer
+  function startTimer(){
+    const display = document.getElementById('timer');
+    function tick(){
+      const min = Math.floor(tiempoRestante/60); const sec = tiempoRestante%60;
+      display.textContent = `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+      if(tiempoRestante<=0){ clearInterval(timerInterval); alert('El tiempo terminó. Se enviará automáticamente la evaluación.'); saveCurrentAnswer(); finishAndSend(); }
+      tiempoRestante--;
+    }
+    tick(); timerInterval = setInterval(tick,1000);
+  }
+
+  // iniciar
+  renderQuestion(0); startTimer();
+
+  // --- Instrucciones y código de Google Apps Script (mostrar en consola en caso de que el profesor lo necesite) ---
+  const appsScriptInstructions = `INSTRUCCIONES DEPLOY APPS SCRIPT:
+
+1) Abre https://script.google.com y crea un nuevo proyecto.
+2) Copia este código en "Código.gs" y guarda:
+
+function doPost(e){
+  try{
+    var ss = SpreadsheetApp.openById('REEMPLAZA_SPREADSHEET_ID'); // id de tu hoja
+    var sh = ss.getSheetByName('Respuestas') || ss.insertSheet('Respuestas');
+    var data = JSON.parse(e.postData.contents);
+    sh.appendRow([new Date(), data.apellidos, data.nombres, data.curso, data.profesor, data.nota, data.detalle]);
+    return ContentService.createTextOutput(JSON.stringify({result:'ok'})).setMimeType(ContentService.MimeType.JSON);
+  }catch(err){
+    return ContentService.createTextOutput(JSON.stringify({error:err.message})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+3) En Google Sheets crea la hoja y copia el ID del documento (parte de la URL).
+4) En Apps Script: Publicar -> Deploy -> New deployment -> Tipo: Web app.
+   - Ejecutar como: "Yo" (tu cuenta)
+   - ¿Quién tiene acceso?: "Anyone" o "Anyone, even anonymous" (para aceptar envíos sin iniciar sesión). IMPORTANTE: si tu organización lo restringe, selecciona la opción que permita acceso público.
+5) Copia la URL del Web App y reemplaza GOOGLE_SCRIPT_URL y REEMPLAZA_SPREADSHEET_ID en el archivo HTML.
+
+AVISO: Publicar como anónimo permite enviar sin iniciar sesión, pero revisa políticas de tu institución y seguridad de datos. Si no quieres público abierto, pide a los alumnos que inicien sesión y ajusta la configuración.
+`;
+  console.log(appsScriptInstructions);
+
+  </script>
+</body>
+</html>
